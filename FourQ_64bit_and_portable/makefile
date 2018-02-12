@@ -32,7 +32,7 @@ else
 ifneq "$(GENERIC)" "TRUE"
     USE_AVX=-D _AVX_
     SIMD=-mavx
-endif  	
+endif
 endif
 ifeq "$(AVX2)" "FALSE"
 else ifeq "$(AVX2)" "TRUE"
@@ -44,7 +44,7 @@ ifneq "$(GENERIC)" "TRUE"
     USE_AVX2=-D _AVX2_
     SIMD=-mavx2
     AVX2_var=yes
-endif  	
+endif
 endif
 
 else ifeq "$(ARCH)" "ARM64"
@@ -105,12 +105,12 @@ ifdef AVX2_var
     ASM_OBJECTS=fp2_1271_AVX2.o
 else
     ASM_OBJECTS=fp2_1271.o
-endif 
 endif
-OBJECTS=eccp2.o eccp2_no_endo.o eccp2_core.o $(ASM_OBJECTS) crypto_util.o schnorrq.o kex.o sha512.o random.o 
-OBJECTS_FP_TEST=fp_tests.o $(OBJECTS) test_extras.o 
-OBJECTS_ECC_TEST=ecc_tests.o $(OBJECTS) test_extras.o 
-OBJECTS_CRYPTO_TEST=crypto_tests.o $(OBJECTS) test_extras.o 
+endif
+OBJECTS=eccp2.o eccp2_no_endo.o eccp2_core.o $(ASM_OBJECTS) crypto_util.o schnorrq.o bpv.o kex.o sha512.o random.o
+OBJECTS_FP_TEST=fp_tests.o $(OBJECTS) test_extras.o
+OBJECTS_ECC_TEST=ecc_tests.o $(OBJECTS) test_extras.o
+OBJECTS_CRYPTO_TEST=crypto_tests.o $(OBJECTS) test_extras.o
 OBJECTS_ALL=$(OBJECTS) $(OBJECTS_FP_TEST) $(OBJECTS_ECC_TEST) $(OBJECTS_CRYPTO_TEST)
 
 all: crypto_test ecc_test fp_test $(SHARED_LIB_O)
@@ -137,7 +137,7 @@ eccp2.o: eccp2.c
 
 eccp2_no_endo.o: eccp2_no_endo.c
 	$(CC) $(CFLAGS) eccp2_no_endo.c
-    
+
 ifdef ASM_var
 ifdef AVX2_var
     AMD64/consts.s: AMD64/consts.c
@@ -153,6 +153,9 @@ endif
 
 schnorrq.o: schnorrq.c
 	$(CC) $(CFLAGS) schnorrq.c
+
+bpv.o: bpv.c
+	$(CC) $(CFLAGS) bpv.c
 
 kex.o: kex.c
 	$(CC) $(CFLAGS) kex.c
@@ -182,4 +185,3 @@ fp_tests.o: tests/fp_tests.c
 
 clean:
 	rm -f $(SHARED_LIB_TARGET) crypto_test ecc_test fp_test fp2_1271.o fp2_1271_AVX2.o AMD64/consts.s consts.o $(OBJECTS_ALL)
-
