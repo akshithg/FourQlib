@@ -3,8 +3,8 @@
 *
 *    Copyright (c) Microsoft Corporation. All rights reserved.
 *
-* Abstract: testing code for cryptographic functions based on FourQ 
-************************************************************************************/   
+* Abstract: testing code for cryptographic functions based on FourQ
+************************************************************************************/
 
 #include "../FourQ_internal.h"
 #include "../FourQ_params.h"
@@ -16,12 +16,15 @@ static unsigned int *DWT_CYCCNT = (unsigned int*)0xE0001004;
 static unsigned int *DWT_CTRL = (unsigned int*)0xE0001000;
 static unsigned int *SCB_DEMCR = (unsigned int*)0xE000EDFC;
 
-// Benchmark and test parameters  
+// Benchmark and test parameters
 #define BENCH_LOOPS       10       // Number of iterations per bench
 #define TEST_LOOPS        10       // Number of iterations per test
 
 #define cpucycles() (*DWT_CYCCNT);
 
+// BPV Parameters
+#define BPV_n 1024
+#define BPV_k 16
 
 static void print_test(const char *text)
 {
@@ -43,111 +46,159 @@ static void print_bench(const char *s, unsigned int cycles)
 
 ECCRYPTO_STATUS SchnorrQ_test()
 { // Test the SchnorrQ digital signature scheme
-    int n, passed;       
-    void *msg = NULL; 
+    int n, passed;
+    void *msg = NULL;
     unsigned int len, valid = false;
     unsigned char SecretKey[32], PublicKey[32], Signature[64];
     ECCRYPTO_STATUS Status = ECCRYPTO_SUCCESS;
 
-    print_test("\n--------------------------------------------------------------------------------------------------------\n"); 
-    print_test("Testing the SchnorrQ signature scheme: \n"); 
+    print_test("\n--------------------------------------------------------------------------------------------------------\n");
+    print_test("Testing the SchnorrQ signature scheme: \n");
 
     passed = 1;
     for (n = 0; n < TEST_LOOPS; n++)
-    {    
+    {
         // Signature key generation
         Status = SchnorrQ_FullKeyGeneration(SecretKey, PublicKey);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }  
+        }
 
         // Signature computation
-        msg = "a";  
+        msg = "a";
         len = 1;
         Status = SchnorrQ_Sign(SecretKey, PublicKey, msg, len, Signature);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }    
+        }
 
         // Valid signature test
         Status = SchnorrQ_Verify(PublicKey, msg, len, Signature, &valid);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }    
+        }
         if (valid == false) {
             passed = 0;
             break;
         }
 
         // Invalid signature test (flipping one bit of the message)
-        msg = "b";  
+        msg = "b";
         Status = SchnorrQ_Verify(PublicKey, msg, len, Signature, &valid);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }    
+        }
         if (valid == true) {
             passed = 0;
             break;
         }
-    } 
+    }
     if (passed==1) print_test("  Signature tests.................................................................. PASSED");
     else { print_test("  Signature tests... FAILED"); print_test("\n"); Status = ECCRYPTO_ERROR_SIGNATURE_VERIFICATION; }
-    
+
     return Status;
 }
 
 
 ECCRYPTO_STATUS SchnorrQ_run()
-{ // Benchmark the SchnorrQ digital signature scheme 
+{ // Benchmark the SchnorrQ digital signature scheme
     int n;
-    unsigned int cycles, cycles1, cycles2;   
+    unsigned int cycles, cycles1, cycles2;
     void *msg = NULL;
     unsigned int len = 0, valid = false;
     unsigned char SecretKey[32], PublicKey[32], Signature[64];
     ECCRYPTO_STATUS Status = ECCRYPTO_SUCCESS;
 
-    print_test("\n--------------------------------------------------------------------------------------------------------\n"); 
-    print_test("Benchmarking the SchnorrQ signature scheme: \n"); 
-    
+    print_test("\n--------------------------------------------------------------------------------------------------------\n");
+    print_test("Benchmarking the SchnorrQ signature scheme: \n");
+
     cycles = 0;
     for (n = 0; n < BENCH_LOOPS; n++)
     {
-        cycles1 = cpucycles(); 
+        cycles1 = cpucycles();
         Status = SchnorrQ_FullKeyGeneration(SecretKey, PublicKey);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }    
+        }
         cycles2 = cpucycles();
         cycles = cycles+(cycles2-cycles1);
     }
     print_bench("  SchnorrQ's key generation runs in ............................................... ", cycles/BENCH_LOOPS);
-    
+
     cycles = 0;
     for (n = 0; n < BENCH_LOOPS; n++)
     {
-        cycles1 = cpucycles(); 
+        cycles1 = cpucycles();
         Status = SchnorrQ_Sign(SecretKey, PublicKey, msg, len, Signature);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }    
+        }
         cycles2 = cpucycles();
         cycles = cycles+(cycles2-cycles1);
     }
     print_bench("  SchnorrQ's signing runs in ...................................................... ", cycles/BENCH_LOOPS);
-    
+
     cycles = 0;
     for (n = 0; n < BENCH_LOOPS; n++)
     {
-        cycles1 = cpucycles(); 
+        cycles1 = cpucycles();
         Status = SchnorrQ_Verify(PublicKey, msg, len, Signature, &valid);
         if (Status != ECCRYPTO_SUCCESS) {
             return Status;
-        }    
+        }
         cycles2 = cpucycles();
         cycles = cycles+(cycles2-cycles1);
     }
     print_bench("  SchnorrQ's verification runs in ................................................. ", cycles/BENCH_LOOPS);
-    
+
+    return Status;
+}
+
+ECCRYPTO_STATUS BPVSchnorr_run()
+{ // Benchmark the BPV-SchnorrQ digital signature scheme
+    int n;
+    unsigned int cycles, cycles1, cycles2;
+    void *msg = NULL;
+    unsigned int len = 0, valid = false;
+	unsigned char secretAll[32*BPV_n], publicAll[64*BPV_n];
+    unsigned char SecretKey[32], PublicKey[64], Signature[64];
+    ECCRYPTO_STATUS Status = ECCRYPTO_SUCCESS;
+
+    print_test("\n----------------------------------BPV-Schnorr-----------------------------------------------------------\n");
+    print_test("Benchmarking the BPV-Schnorr signature scheme: \n");
+
+    UncompressedBPVPrecalculation(secretAll, publicAll);
+    Status = UncompressedBPVKeyGen(secretAll, publicAll, SecretKey, PublicKey);
+	if (Status != ECCRYPTO_SUCCESS) {
+		return Status;
+	}
+
+    cycles = 0;
+    for (n = 0; n < BENCH_LOOPS; n++)
+    {
+        cycles1 = cpucycles();
+        Status = BPVSchnorr_Sign(secretAll, publicAll, SecretKey, PublicKey, msg, len, Signature);
+        if (Status != ECCRYPTO_SUCCESS) {
+            return Status;
+        }
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    print_bench("  BPV-Schnorr's signing runs in ................................................... ", cycles/BENCH_LOOPS);
+
+    cycles = 0;
+    for (n = 0; n < BENCH_LOOPS; n++)
+    {
+        cycles1 = cpucycles();
+        Status = BPVSchnorr_Verify(PublicKey, msg, len, Signature, &valid);
+        if (Status != ECCRYPTO_SUCCESS) {
+            return Status;
+        }
+        cycles2 = cpucycles();
+        cycles = cycles+(cycles2-cycles1);
+    }
+    print_bench("  BPV-Schnorr's verification runs in ............................................... ", cycles/BENCH_LOOPS);
+
     return Status;
 }
 
@@ -203,7 +254,7 @@ ECCRYPTO_STATUS compressedkex_test()
 
 
 ECCRYPTO_STATUS compressedkex_run()
-{ // Benchmark ECDH key exchange based on FourQ 
+{ // Benchmark ECDH key exchange based on FourQ
 	int n;
 	unsigned int cycles, cycles1, cycles2;
 	unsigned char SecretKeyA[32], PublicKeyA[32], SecretAgreementA[32];
@@ -225,7 +276,7 @@ ECCRYPTO_STATUS compressedkex_run()
 		cycles = cycles + (cycles2 - cycles1);
 	}
 	print_bench("  Keypair generation runs in ...................................................... ", cycles/BENCH_LOOPS);
-	
+
 	Status = CompressedKeyGeneration(SecretKeyB, PublicKeyB);
 	cycles = 0;
 	for (n = 0; n < BENCH_LOOPS; n++)
@@ -239,6 +290,52 @@ ECCRYPTO_STATUS compressedkex_run()
 		cycles = cycles + (cycles2 - cycles1);
 	}
 	print_bench("  Secret agreement runs in ........................................................ ", cycles/BENCH_LOOPS);
+
+	return Status;
+}
+
+
+ECCRYPTO_STATUS BPVcompressedkex_run()
+{ // Benchmark ECDH key exchange based on FourQ
+	int n;
+	unsigned int cycles, cycles1, cycles2;
+	unsigned char secretAll[32*BPV_n], publicAll[32*BPV_n];
+	unsigned char SecretKeyA[32], PublicKeyA[32], SecretAgreementA[32];
+	unsigned char SecretKeyB[32], PublicKeyB[32];
+	ECCRYPTO_STATUS Status = ECCRYPTO_SUCCESS;
+
+	print_test("\n------------------------------------BPV - ECDH----------------------------------------------------------\n");
+	print_test("Benchmarking BPV DH key exchange using compressed, 32-byte public keys: \n");
+
+	CompressedBPVPrecalculation(secretAll, publicAll);
+
+	print_test("PRECALCULATION IS DONE==============================\n");
+	cycles = 0;
+	for (n = 0; n < BENCH_LOOPS; n++)
+	{
+		cycles1 = cpucycles();
+		Status = CompressedBPVKeyGen(secretAll, publicAll, SecretKeyA, PublicKeyA);
+		if (Status != ECCRYPTO_SUCCESS) {
+			return Status;
+		}
+		cycles2 = cpucycles();
+		cycles = cycles + (cycles2 - cycles1);
+	}
+	print_bench("  BPV Keypair generation runs in ...................................................... ", cycles/BENCH_LOOPS);
+
+	Status = CompressedKeyGeneration(SecretKeyB, PublicKeyB);
+	cycles = 0;
+	for (n = 0; n < BENCH_LOOPS; n++)
+	{
+		cycles1 = cpucycles();
+		Status = CompressedSecretAgreement(SecretKeyA, PublicKeyB, SecretAgreementA);
+		if (Status != ECCRYPTO_SUCCESS) {
+			return Status;
+		}
+		cycles2 = cpucycles();
+		cycles = cycles + (cycles2 - cycles1);
+	}
+	print_bench("  BPV Secret agreement runs in ........................................................ ", cycles/BENCH_LOOPS);
 
 	return Status;
 }
@@ -295,7 +392,7 @@ ECCRYPTO_STATUS kex_test()
 
 
 ECCRYPTO_STATUS kex_run()
-{ // Benchmark ECDH key exchange based on FourQ 
+{ // Benchmark ECDH key exchange based on FourQ
 	int n;
 	unsigned int cycles, cycles1, cycles2;
 	unsigned char SecretKeyA[32], PublicKeyA[64], SecretAgreementA[32];
@@ -336,6 +433,52 @@ ECCRYPTO_STATUS kex_run()
 }
 
 
+ECCRYPTO_STATUS BPVuncompressedkex_run()
+{ // Benchmark ECDH key exchange based on FourQ
+	int n;
+	unsigned int cycles, cycles1, cycles2;
+	unsigned char secretAll[32*BPV_n], publicAll[64*BPV_n];
+	unsigned char SecretKeyA[32], PublicKeyA[64], SecretAgreementA[32];
+	unsigned char SecretKeyB[32], PublicKeyB[64];
+	ECCRYPTO_STATUS Status = ECCRYPTO_SUCCESS;
+
+	print_test("\n------------------------------------BPV - ECDH----------------------------------------------------------\n");
+	print_test("Benchmarking BPV DH key exchange using uncompressed, 64-byte public keys: \n");
+
+	UncompressedBPVPrecalculation(secretAll, publicAll);
+
+	print_test("PRECALCULATION IS DONE==============================\n");
+	cycles = 0;
+	for (n = 0; n < BENCH_LOOPS; n++)
+	{
+		cycles1 = cpucycles();
+		Status = UncompressedBPVKeyGen(secretAll, publicAll, SecretKeyA, PublicKeyA);
+		if (Status != ECCRYPTO_SUCCESS) {
+			return Status;
+		}
+		cycles2 = cpucycles();
+		cycles = cycles + (cycles2 - cycles1);
+	}
+	print_bench("  BPV Keypair generation runs in ...................................................... ", cycles/BENCH_LOOPS);
+
+	Status = KeyGeneration(SecretKeyB, PublicKeyB);
+	cycles = 0;
+	for (n = 0; n < BENCH_LOOPS; n++)
+	{
+		cycles1 = cpucycles();
+		Status = SecretAgreement(SecretKeyA, PublicKeyB, SecretAgreementA);
+		if (Status != ECCRYPTO_SUCCESS) {
+			return Status;
+		}
+		cycles2 = cpucycles();
+		cycles = cycles + (cycles2 - cycles1);
+	}
+	print_bench("  BPV Secret agreement runs in ........................................................ ", cycles/BENCH_LOOPS);
+
+	return Status;
+}
+
+
 int main()
 {
     clock_setup();
@@ -359,6 +502,12 @@ int main()
         return false;
     }
 
+	Status = BPVSchnorr_run();          // Benchmark SchnorrQ signature scheme
+    if (Status != ECCRYPTO_SUCCESS) {
+        print_test("\n\n   BPVSchnorr Error detected \n\n");
+        return false;
+    }
+
 	Status = compressedkex_test();    // Test Diffie-Hellman key exchange using compressed public keys
 	if (Status != ECCRYPTO_SUCCESS) {
         print_test("\n\n   Error detected \n\n");
@@ -367,6 +516,12 @@ int main()
 	Status = compressedkex_run();     // Benchmark Diffie-Hellman key exchange using compressed public keys
 	if (Status != ECCRYPTO_SUCCESS) {
         print_test("\n\n   Error detected \n\n");
+		return false;
+	}
+
+	Status = BPVcompressedkex_run();     // Benchmark Diffie-Hellman key exchange using compressed public keys
+	if (Status != ECCRYPTO_SUCCESS) {
+        print_test("\n\n   BPV DH with Compressed PK Error detected \n\n");
 		return false;
 	}
 
@@ -380,6 +535,13 @@ int main()
         print_test("\n\n   Error detected \n\n");
 		return false;
 	}
+
+	Status = BPVuncompressedkex_run();               // Benchmark Diffie-Hellman key exchange using uncompressed public keys
+	if (Status != ECCRYPTO_SUCCESS) {
+        print_test("\n\n   BPV DH with Uncompressed PK Error detected \n\n");
+		return false;
+	}
+
     signal_host();
 
     return 0;
